@@ -1,0 +1,39 @@
+[workspace]
+members = [
+    "programs/*"
+]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
+[patch.crates-io]
+blake3 = { git = "https://github.com/BLAKE3-team/BLAKE3", tag = "1.5.0" }
+spl-transfer-hook-interface = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-tlv-account-resolution  = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-type-length-value       = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+
+spl-pod                     = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-program-error           = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-program-error-derive     = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-discriminator           = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-discriminator-derive     = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-discriminator-syn        = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+# --- fuerza token crates desde SPL repo (MISMO commit) ---
+spl-token-2022 = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a", package = "spl-token-2022" }
+spl-token      = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a", package = "spl-token" }
+# fuerza borsh a versiones compatibles con rustc 1.75 (fuente git = distinto a crates.io)
+borsh = { git = "https://github.com/near/borsh-rs", tag = "borsh-v1.5.7" }
+borsh-derive = { git = "https://github.com/near/borsh-rs", tag = "borsh-derive-v1.5.7" }
+
+
+
+
+
+
+

@@ -9,9 +9,8 @@ crate-type = ["cdylib", "lib"]
 name = "fxckwhales"
 
 [features]
-default = []
+default = ["no-entrypoint"]
 no-entrypoint = []
-idl-build = ["anchor-lang/idl-build"]
 cpi = []
 anchor-debug = []
 no-idl = []
@@ -20,13 +19,24 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "0.29.0"
-anchor-spl = "0.29.0"
+anchor-lang = "0.28.0"
+anchor-spl = "0.28.0"
 
-# Usamos SPL desde github en un commit conocido (evita que Cargo te meta Solana 2.x)
+# Fijadas explícitamente para evitar workspace inheritance en Anchor 0.28
+num_enum = "0.6.1"
+num_enum_derive = "0.6.1"
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+
+# Compatible con Anchor 0.28 / Solana 1.16.x
+solana-program = "1.16.25"
+
+# SPL transfer-hook stack
 spl-transfer-hook-interface = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a", default-features = false }
-spl-tlv-account-resolution   = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a", default-features = false }
-spl-type-length-value        = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a", default-features = false }
-spl-token = "=4.0.0"
-spl-token-2022 = "=0.9.0"
+spl-tlv-account-resolution  = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a", default-features = false }
+spl-type-length-value       = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a", default-features = false }
+
+# Necesarias para hook.rs
+spl-token = "3.5.0"
+spl-token-2022 = "0.6.1"
 

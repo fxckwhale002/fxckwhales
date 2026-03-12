@@ -5,10 +5,10 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-fxckwhales = "DTqD15g4omn9ncYgfHPu713nCWn1ccyJNUNdTYMMnFui"
+fxckwhales = "9cm9pcwFVxvgUx3wEjQkQkZHw6Qr6MHjihDD1a5j8foT"
 
 [programs.devnet]
-fxckwhales = "DTqD15g4omn9ncYgfHPu713nCWn1ccyJNUNdTYMMnFui"
+fxckwhales = "9cm9pcwFVxvgUx3wEjQkQkZHw6Qr6MHjihDD1a5j8foT"
 
 [registry]
 url = "https://api.apr.dev"

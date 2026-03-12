@@ -1,11 +1,15 @@
 pub mod hook;
 pub mod state;
-use crate::state::{Config, WhitelistEntry, WhitelistKind};
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::{
+    account_info::AccountInfo,
+    pubkey::Pubkey,
+};
 
+use crate::state::{Config, WhitelistEntry, WhitelistKind};
 
-declare_id!("DTqD15g4omn9ncYgfHPu713nCWn1ccyJNUNdTYMMnFui");
+declare_id!("9cm9pcwFVxvgUx3wEjQkQkZHw6Qr6MHjihDD1a5j8foT");
 
 #[program]
 pub mod fxckwhales {
@@ -21,7 +25,7 @@ pub mod fxckwhales {
         cfg.mint = ctx.accounts.mint.key();
         cfg.max_hold_bps = max_hold_bps;
         cfg.authority = Some(ctx.accounts.authority.key());
-        cfg.bump = ctx.bumps.config;
+        cfg.bump = *ctx.bumps.get("config").unwrap();
 
         Ok(())
     }
@@ -35,13 +39,12 @@ pub mod fxckwhales {
         entry.config = cfg.key();
         entry.wallet = ctx.accounts.wallet.key();
         entry.kind = kind;
-        entry.bump = ctx.bumps.entry;
+        entry.bump = *ctx.bumps.get("entry").unwrap();
 
         Ok(())
     }
 
     pub fn remove_whitelist(_ctx: Context<RemoveWhitelist>) -> Result<()> {
-        // La cuenta `entry` se cierra sola por el atributo `close = authority`
         Ok(())
     }
 
@@ -53,6 +56,19 @@ pub mod fxckwhales {
         cfg.authority = None;
         Ok(())
     }
+}
+
+#[cfg(not(feature = "no-entrypoint"))]
+pub fn process_instruction<'info>(
+    program_id: &Pubkey,
+    accounts: &'info [AccountInfo<'info>],
+    data: &[u8],
+) -> anchor_lang::solana_program::entrypoint::ProgramResult {
+    if let Some(res) = hook::try_process_transfer_hook(program_id, accounts, data) {
+        return res;
+    }
+
+    Err(anchor_lang::solana_program::program_error::ProgramError::InvalidInstructionData)
 }
 
 #[derive(Accounts)]
@@ -67,7 +83,6 @@ pub struct InitializeConfig<'info> {
     pub config: Account<'info, Config>,
 
     /// CHECK: aquí solo guardamos la pubkey del mint.
-    /// Más adelante podemos validarlo como Mint (token-2022) si quieres.
     pub mint: UncheckedAccount<'info>,
 
     #[account(mut)]
@@ -149,6 +164,3 @@ pub enum FxckError {
     #[msg("Config is frozen")]
     ConfigFrozen,
 }
-
-
-

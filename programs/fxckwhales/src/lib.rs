@@ -2,25 +2,16 @@ pub mod hook;
 pub mod state;
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    account_info::AccountInfo,
-    pubkey::Pubkey,
-};
 
 use crate::state::{Config, WhitelistEntry, WhitelistKind};
 
-// 👇 CAMBIA ESTO por el resultado de:
-// solana address -k target/deploy/fxckwhales-keypair.json
 declare_id!("9716KNRKwaXaD9CkeqVjHCnDhuhBpWE1MwaDFPLabREE");
 
 #[program]
 pub mod fxckwhales {
     use super::*;
 
-    pub fn initialize_config(
-        ctx: Context<InitializeConfig>,
-        max_hold_bps: u16,
-    ) -> Result<()> {
+    pub fn initialize_config(ctx: Context<InitializeConfig>, max_hold_bps: u16) -> Result<()> {
         require!(
             max_hold_bps > 0 && max_hold_bps <= 10_000,
             FxckError::InvalidBps
@@ -35,10 +26,7 @@ pub mod fxckwhales {
         Ok(())
     }
 
-    pub fn add_whitelist(
-        ctx: Context<AddWhitelist>,
-        kind: WhitelistKind,
-    ) -> Result<()> {
+    pub fn add_whitelist(ctx: Context<AddWhitelist>, kind: WhitelistKind) -> Result<()> {
         let cfg = &ctx.accounts.config;
         let auth = cfg.authority.ok_or(FxckError::ConfigFrozen)?;
         require_keys_eq!(auth, ctx.accounts.authority.key(), FxckError::Unauthorized);
@@ -64,19 +52,18 @@ pub mod fxckwhales {
         cfg.authority = None;
         Ok(())
     }
-}
 
-#[cfg(not(feature = "no-entrypoint"))]
-pub fn process_instruction<'info>(
-    program_id: &Pubkey,
-    accounts: &'info [AccountInfo<'info>],
-    data: &[u8],
-) -> anchor_lang::solana_program::entrypoint::ProgramResult {
-    if let Some(res) = hook::try_process_transfer_hook(program_id, accounts, data) {
-        return res;
+    
+    pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
+        hook::validate_transfer(
+            &crate::ID,
+            &ctx.accounts.mint.to_account_info(),
+            &ctx.accounts.destination_token.to_account_info(),
+            &ctx.accounts.config,
+            Some(&ctx.accounts.whitelist_entry.to_account_info()),
+            amount,
+        )
     }
-
-    Err(anchor_lang::solana_program::program_error::ProgramError::InvalidInstructionData)
 }
 
 #[derive(Accounts)]
@@ -134,7 +121,7 @@ pub struct RemoveWhitelist<'info> {
     )]
     pub config: Account<'info, Config>,
 
-    /// CHECK: solo usamos su pubkey
+    /// CHECK
     pub wallet: UncheckedAccount<'info>,
 
     #[account(
@@ -163,6 +150,33 @@ pub struct FinalizeConfig<'info> {
     pub authority: Signer<'info>,
 }
 
+#[derive(Accounts)]
+pub struct TransferHook<'info> {
+    /// CHECK: cuenta token origen
+    pub source_token: UncheckedAccount<'info>,
+
+    /// CHECK: mint token-2022
+    pub mint: UncheckedAccount<'info>,
+
+    /// CHECK: cuenta token destino
+    pub destination_token: UncheckedAccount<'info>,
+
+    /// CHECK: owner/delegate de la transferencia
+    pub owner: UncheckedAccount<'info>,
+
+    /// CHECK: extra-account-meta-list del transfer hook
+    pub extra_account_meta_list: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [Config::SEED, mint.key().as_ref()],
+        bump = config.bump
+    )]
+    pub config: Account<'info, Config>,
+
+    /// CHECK: se valida manualmente dentro del hook
+    pub whitelist_entry: UncheckedAccount<'info>,
+}
+
 #[error_code]
 pub enum FxckError {
     #[msg("Invalid basis points value")]
@@ -171,4 +185,12 @@ pub enum FxckError {
     Unauthorized,
     #[msg("Config is frozen")]
     ConfigFrozen,
+    #[msg("Destination holding exceeds the configured max_hold_bps")]
+    MaxHoldExceeded,
+    #[msg("Math overflow")]
+    MathOverflow,
+    #[msg("Invalid mint account")]
+    InvalidMintAccount,
+    #[msg("Invalid token account")]
+    InvalidTokenAccount,
 }

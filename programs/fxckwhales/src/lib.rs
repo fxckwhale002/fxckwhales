@@ -9,13 +9,18 @@ use anchor_lang::solana_program::{
 
 use crate::state::{Config, WhitelistEntry, WhitelistKind};
 
-declare_id!("9cm9pcwFVxvgUx3wEjQkQkZHw6Qr6MHjihDD1a5j8foT");
+// 👇 CAMBIA ESTO por el resultado de:
+// solana address -k target/deploy/fxckwhales-keypair.json
+declare_id!("9716KNRKwaXaD9CkeqVjHCnDhuhBpWE1MwaDFPLabREE");
 
 #[program]
 pub mod fxckwhales {
     use super::*;
 
-    pub fn initialize_config(ctx: Context<InitializeConfig>, max_hold_bps: u16) -> Result<()> {
+    pub fn initialize_config(
+        ctx: Context<InitializeConfig>,
+        max_hold_bps: u16,
+    ) -> Result<()> {
         require!(
             max_hold_bps > 0 && max_hold_bps <= 10_000,
             FxckError::InvalidBps
@@ -30,7 +35,10 @@ pub mod fxckwhales {
         Ok(())
     }
 
-    pub fn add_whitelist(ctx: Context<AddWhitelist>, kind: WhitelistKind) -> Result<()> {
+    pub fn add_whitelist(
+        ctx: Context<AddWhitelist>,
+        kind: WhitelistKind,
+    ) -> Result<()> {
         let cfg = &ctx.accounts.config;
         let auth = cfg.authority.ok_or(FxckError::ConfigFrozen)?;
         require_keys_eq!(auth, ctx.accounts.authority.key(), FxckError::Unauthorized);
@@ -82,7 +90,7 @@ pub struct InitializeConfig<'info> {
     )]
     pub config: Account<'info, Config>,
 
-    /// CHECK: aquí solo guardamos la pubkey del mint.
+    /// CHECK: aquí solo guardamos la pubkey del mint
     pub mint: UncheckedAccount<'info>,
 
     #[account(mut)]
@@ -126,7 +134,7 @@ pub struct RemoveWhitelist<'info> {
     )]
     pub config: Account<'info, Config>,
 
-    /// CHECK
+    /// CHECK: solo usamos su pubkey
     pub wallet: UncheckedAccount<'info>,
 
     #[account(

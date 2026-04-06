@@ -176,7 +176,6 @@ pub struct TransferHook<'info> {
     /// CHECK: se valida manualmente dentro del hook
     pub whitelist_entry: UncheckedAccount<'info>,
 }
-
 #[error_code]
 pub enum FxckError {
     #[msg("Invalid basis points value")]
@@ -193,4 +192,6 @@ pub enum FxckError {
     InvalidMintAccount,
     #[msg("Invalid token account")]
     InvalidTokenAccount,
+    #[msg("Invalid config account")]
+    InvalidConfigAccount,
 }

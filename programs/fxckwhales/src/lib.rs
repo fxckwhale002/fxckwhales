@@ -2,6 +2,11 @@ pub mod hook;
 pub mod state;
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    pubkey::Pubkey,
+};
 
 use crate::state::{Config, WhitelistEntry, WhitelistKind};
 
@@ -52,18 +57,19 @@ pub mod fxckwhales {
         cfg.authority = None;
         Ok(())
     }
+}
 
-    
-    pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
-        hook::validate_transfer(
-            &crate::ID,
-            &ctx.accounts.mint.to_account_info(),
-            &ctx.accounts.destination_token.to_account_info(),
-            &ctx.accounts.config,
-            Some(&ctx.accounts.whitelist_entry.to_account_info()),
-            amount,
-        )
+#[cfg(not(feature = "no-entrypoint"))]
+pub fn process_instruction<'info>(
+    program_id: &Pubkey,
+    accounts: &'info [AccountInfo<'info>],
+    data: &[u8],
+) -> ProgramResult {
+    if let Some(res) = hook::try_process_transfer_hook(program_id, accounts, data) {
+        return res;
     }
+
+    Err(anchor_lang::solana_program::program_error::ProgramError::InvalidInstructionData)
 }
 
 #[derive(Accounts)]
@@ -150,32 +156,6 @@ pub struct FinalizeConfig<'info> {
     pub authority: Signer<'info>,
 }
 
-#[derive(Accounts)]
-pub struct TransferHook<'info> {
-    /// CHECK: cuenta token origen
-    pub source_token: UncheckedAccount<'info>,
-
-    /// CHECK: mint token-2022
-    pub mint: UncheckedAccount<'info>,
-
-    /// CHECK: cuenta token destino
-    pub destination_token: UncheckedAccount<'info>,
-
-    /// CHECK: owner/delegate de la transferencia
-    pub owner: UncheckedAccount<'info>,
-
-    /// CHECK: extra-account-meta-list del transfer hook
-    pub extra_account_meta_list: UncheckedAccount<'info>,
-
-    #[account(
-        seeds = [Config::SEED, mint.key().as_ref()],
-        bump = config.bump
-    )]
-    pub config: Account<'info, Config>,
-
-    /// CHECK: se valida manualmente dentro del hook
-    pub whitelist_entry: UncheckedAccount<'info>,
-}
 #[error_code]
 pub enum FxckError {
     #[msg("Invalid basis points value")]

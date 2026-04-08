@@ -57,6 +57,20 @@ pub mod fxckwhales {
         cfg.authority = None;
         Ok(())
     }
+
+    pub fn debug_validate_transfer(
+        ctx: Context<DebugValidateTransfer>,
+        amount: u64,
+    ) -> Result<()> {
+        hook::validate_transfer(
+            &crate::ID,
+            &ctx.accounts.mint.to_account_info(),
+            &ctx.accounts.destination_token.to_account_info(),
+            &ctx.accounts.config,
+            ctx.accounts.whitelist_entry.as_ref().map(|a| a.as_ref()),
+            amount,
+        )
+    }
 }
 
 #[cfg(not(feature = "no-entrypoint"))]
@@ -154,6 +168,24 @@ pub struct FinalizeConfig<'info> {
     pub config: Account<'info, Config>,
 
     pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct DebugValidateTransfer<'info> {
+    /// CHECK: mint token-2022 leído manualmente
+    pub mint: UncheckedAccount<'info>,
+
+    /// CHECK: token account destino leído manualmente
+    pub destination_token: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [Config::SEED, config.mint.as_ref()],
+        bump = config.bump
+    )]
+    pub config: Account<'info, Config>,
+
+    /// CHECK: opcional, se valida manualmente dentro del hook
+    pub whitelist_entry: Option<UncheckedAccount<'info>>,
 }
 
 #[error_code]

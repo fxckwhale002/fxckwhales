@@ -3,11 +3,13 @@ use anchor_lang::solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     program_error::ProgramError,
-    program_pack::Pack,
     pubkey::Pubkey,
 };
 
-use spl_token_2022::state::{Account as TokenAccount, Mint};
+use spl_token_2022::{
+    extension::StateWithExtensions,
+    state::{Account as TokenAccount, Mint},
+};
 use spl_transfer_hook_interface::instruction::TransferHookInstruction;
 
 use crate::{
@@ -54,7 +56,6 @@ fn process_execute<'info>(
     )
     .map_err(Into::into)
 }
-
 pub fn validate_transfer<'info>(
     program_id: &Pubkey,
     mint_ai: &AccountInfo<'info>,
@@ -63,15 +64,30 @@ pub fn validate_transfer<'info>(
     whitelist_ai: Option<&AccountInfo<'info>>,
     amount: u64,
 ) -> Result<()> {
+    msg!("validate_transfer: start");
+    msg!("program_id: {}", program_id);
+    msg!("mint_ai.key: {}", mint_ai.key());
+    msg!("mint_ai.owner: {}", mint_ai.owner);
+    msg!("mint_ai.data_len: {}", mint_ai.data_len());
+
+    msg!("destination_token_ai.key: {}", destination_token_ai.key());
+    msg!("destination_token_ai.owner: {}", destination_token_ai.owner);
+    msg!("destination_token_ai.data_len: {}", destination_token_ai.data_len());
+
     let mint_data = mint_ai.try_borrow_data()?;
-    let mint = Mint::unpack(&mint_data)
+    let mint_state = StateWithExtensions::<Mint>::unpack(&mint_data)
         .map_err(|_| error!(FxckError::InvalidMintAccount))?;
+    let mint = mint_state.base;
     drop(mint_data);
 
     let destination_data = destination_token_ai.try_borrow_data()?;
-    let destination = TokenAccount::unpack(&destination_data)
+    let destination_state = StateWithExtensions::<TokenAccount>::unpack(&destination_data)
         .map_err(|_| error!(FxckError::InvalidTokenAccount))?;
+    let destination = destination_state.base;
     drop(destination_data);
+
+    msg!("destination.owner field: {}", destination.owner);
+    msg!("destination.amount: {}", destination.amount);
 
     if is_whitelisted(program_id, config.key(), &destination, whitelist_ai)? {
         return Ok(());
@@ -96,6 +112,7 @@ pub fn validate_transfer<'info>(
     Ok(())
 }
 
+
 pub fn validate_transfer_raw<'info>(
     program_id: &Pubkey,
     mint_ai: &AccountInfo<'info>,
@@ -105,13 +122,15 @@ pub fn validate_transfer_raw<'info>(
     amount: u64,
 ) -> Result<()> {
     let mint_data = mint_ai.try_borrow_data()?;
-    let mint = Mint::unpack(&mint_data)
+    let mint_state = StateWithExtensions::<Mint>::unpack(&mint_data)
         .map_err(|_| error!(FxckError::InvalidMintAccount))?;
+    let mint = mint_state.base;
     drop(mint_data);
 
     let destination_data = destination_token_ai.try_borrow_data()?;
-    let destination = TokenAccount::unpack(&destination_data)
+    let destination_state = StateWithExtensions::<TokenAccount>::unpack(&destination_data)
         .map_err(|_| error!(FxckError::InvalidTokenAccount))?;
+    let destination = destination_state.base;
     drop(destination_data);
 
     let config_data = config_ai.try_borrow_data()?;

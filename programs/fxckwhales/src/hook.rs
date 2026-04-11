@@ -37,14 +37,14 @@ fn process_execute<'info>(
     accounts: &'info [AccountInfo<'info>],
     amount: u64,
 ) -> ProgramResult {
-    if accounts.len() < 5 {
+    if accounts.len() < 6 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
 
     let mint_ai = &accounts[1];
-    let destination_token_ai = &accounts[3];
-    let config_ai = &accounts[4];
-    let whitelist_ai = accounts.get(5);
+    let destination_token_ai = &accounts[2];
+    let config_ai = &accounts[5];
+    let whitelist_ai = accounts.get(6);
 
     validate_transfer_raw(
         program_id,
@@ -56,6 +56,7 @@ fn process_execute<'info>(
     )
     .map_err(Into::into)
 }
+
 pub fn validate_transfer<'info>(
     program_id: &Pubkey,
     mint_ai: &AccountInfo<'info>,
@@ -64,16 +65,6 @@ pub fn validate_transfer<'info>(
     whitelist_ai: Option<&AccountInfo<'info>>,
     amount: u64,
 ) -> Result<()> {
-    msg!("validate_transfer: start");
-    msg!("program_id: {}", program_id);
-    msg!("mint_ai.key: {}", mint_ai.key());
-    msg!("mint_ai.owner: {}", mint_ai.owner);
-    msg!("mint_ai.data_len: {}", mint_ai.data_len());
-
-    msg!("destination_token_ai.key: {}", destination_token_ai.key());
-    msg!("destination_token_ai.owner: {}", destination_token_ai.owner);
-    msg!("destination_token_ai.data_len: {}", destination_token_ai.data_len());
-
     let mint_data = mint_ai.try_borrow_data()?;
     let mint_state = StateWithExtensions::<Mint>::unpack(&mint_data)
         .map_err(|_| error!(FxckError::InvalidMintAccount))?;
@@ -85,9 +76,6 @@ pub fn validate_transfer<'info>(
         .map_err(|_| error!(FxckError::InvalidTokenAccount))?;
     let destination = destination_state.base;
     drop(destination_data);
-
-    msg!("destination.owner field: {}", destination.owner);
-    msg!("destination.amount: {}", destination.amount);
 
     if is_whitelisted(program_id, config.key(), &destination, whitelist_ai)? {
         return Ok(());
@@ -111,7 +99,6 @@ pub fn validate_transfer<'info>(
 
     Ok(())
 }
-
 
 pub fn validate_transfer_raw<'info>(
     program_id: &Pubkey,

@@ -2,10 +2,15 @@ pub mod hook;
 pub mod state;
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    pubkey::Pubkey,
+use anchor_lang::system_program::{create_account, CreateAccount};
+
+use spl_tlv_account_resolution::{
+    account::ExtraAccountMeta,
+    state::ExtraAccountMetaList,
+};
+use spl_transfer_hook_interface::instruction::{
+    ExecuteInstruction,
+    TransferHookInstruction,
 };
 
 use crate::state::{Config, WhitelistEntry, WhitelistKind};
@@ -27,6 +32,54 @@ pub mod fxckwhales {
         cfg.max_hold_bps = max_hold_bps;
         cfg.authority = Some(ctx.accounts.authority.key());
         cfg.bump = *ctx.bumps.get("config").unwrap();
+
+        Ok(())
+    }
+
+    pub fn initialize_extra_account_meta_list(
+        ctx: Context<InitializeExtraAccountMetaList>,
+    ) -> Result<()> {
+        let account_metas = vec![
+            ExtraAccountMeta::new_with_pubkey(&ctx.accounts.config.key(), false, false)
+                .map_err(|_| error!(FxckError::InvalidExtraAccountMetaList))?,
+        ];
+
+        let account_size = ExtraAccountMetaList::size_of(account_metas.len())
+            .map_err(|_| error!(FxckError::InvalidExtraAccountMetaList))?;
+
+        let lamports = Rent::get()?.minimum_balance(account_size);
+
+        let mint_key = ctx.accounts.mint.key();
+        let bump = *ctx.bumps.get("extra_account_meta_list").unwrap();
+
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            b"extra-account-metas",
+            mint_key.as_ref(),
+            &[bump],
+        ]];
+
+        create_account(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                CreateAccount {
+                    from: ctx.accounts.authority.to_account_info(),
+                    to: ctx.accounts.extra_account_meta_list.to_account_info(),
+                },
+            )
+            .with_signer(signer_seeds),
+            lamports,
+            account_size as u64,
+            ctx.program_id,
+        )?;
+
+        ExtraAccountMetaList::init::<ExecuteInstruction>(
+            &mut ctx
+                .accounts
+                .extra_account_meta_list
+                .try_borrow_mut_data()?,
+            &account_metas,
+        )
+        .map_err(|_| error!(FxckError::InvalidExtraAccountMetaList))?;
 
         Ok(())
     }
@@ -71,19 +124,34 @@ pub mod fxckwhales {
             amount,
         )
     }
+
+    pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
+        hook::validate_transfer(
+            &crate::ID,
+            &ctx.accounts.mint.to_account_info(),
+            &ctx.accounts.destination_token.to_account_info(),
+            &ctx.accounts.config,
+            None,
+            amount,
+        )
+    }
 }
 
-#[cfg(not(feature = "no-entrypoint"))]
-pub fn process_instruction<'info>(
+pub fn fallback<'info>(
     program_id: &Pubkey,
     accounts: &'info [AccountInfo<'info>],
     data: &[u8],
-) -> ProgramResult {
-    if let Some(res) = hook::try_process_transfer_hook(program_id, accounts, data) {
-        return res;
-    }
+) -> Result<()> {
+    let instruction = TransferHookInstruction::unpack(data)
+        .map_err(|_| error!(FxckError::InvalidTransferHookInstruction))?;
 
-    Err(anchor_lang::solana_program::program_error::ProgramError::InvalidInstructionData)
+    match instruction {
+        TransferHookInstruction::Execute { amount } => {
+            let amount_bytes = amount.to_le_bytes();
+            __private::__global::transfer_hook(program_id, accounts, &amount_bytes)
+        }
+        _ => Err(error!(FxckError::InvalidTransferHookInstruction)),
+    }
 }
 
 #[derive(Accounts)]
@@ -102,6 +170,31 @@ pub struct InitializeConfig<'info> {
 
     #[account(mut)]
     pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeExtraAccountMetaList<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// CHECK: PDA que almacena la ExtraAccountMetaList
+    #[account(
+        mut,
+        seeds = [b"extra-account-metas", mint.key().as_ref()],
+        bump
+    )]
+    pub extra_account_meta_list: UncheckedAccount<'info>,
+
+    /// CHECK: solo usamos la pubkey
+    pub mint: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [Config::SEED, mint.key().as_ref()],
+        bump = config.bump
+    )]
+    pub config: Account<'info, Config>,
 
     pub system_program: Program<'info, System>,
 }
@@ -188,6 +281,30 @@ pub struct DebugValidateTransfer<'info> {
     pub whitelist_entry: Option<UncheckedAccount<'info>>,
 }
 
+#[derive(Accounts)]
+pub struct TransferHook<'info> {
+    /// CHECK: cuenta token origen
+    pub source_token: UncheckedAccount<'info>,
+
+    /// CHECK: mint token-2022
+    pub mint: UncheckedAccount<'info>,
+
+    /// CHECK: cuenta token destino
+    pub destination_token: UncheckedAccount<'info>,
+
+    /// CHECK: owner/delegate de la transferencia
+    pub owner: UncheckedAccount<'info>,
+
+    /// CHECK: cuenta PDA de extra-account-metas
+    pub extra_account_meta_list: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [Config::SEED, mint.key().as_ref()],
+        bump = config.bump
+    )]
+    pub config: Account<'info, Config>,
+}
+
 #[error_code]
 pub enum FxckError {
     #[msg("Invalid basis points value")]
@@ -206,4 +323,8 @@ pub enum FxckError {
     InvalidTokenAccount,
     #[msg("Invalid config account")]
     InvalidConfigAccount,
+    #[msg("Invalid extra account meta list")]
+    InvalidExtraAccountMetaList,
+    #[msg("Invalid transfer hook instruction")]
+    InvalidTransferHookInstruction,
 }

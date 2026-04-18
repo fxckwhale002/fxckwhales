@@ -35,17 +35,25 @@ describe("fxckwhales-hook-real", () => {
   const senderOwner = Keypair.generate();
   const regularOwner = Keypair.generate();
   const reserveOwner = Keypair.generate();
+  const whitelistedOwner = Keypair.generate();
 
   let mint: PublicKey;
   let configPda: PublicKey;
   let extraAccountMetaListPda: PublicKey;
+  let whitelistPda: PublicKey;
 
   let senderTokenAccount: PublicKey;
   let regularTokenAccount: PublicKey;
   let reserveTokenAccount: PublicKey;
+  let whitelistedTokenAccount: PublicKey;
 
   before(async () => {
-    for (const kp of [senderOwner, regularOwner, reserveOwner]) {
+    for (const kp of [
+      senderOwner,
+      regularOwner,
+      reserveOwner,
+      whitelistedOwner,
+    ]) {
       const sig = await provider.connection.requestAirdrop(
         kp.publicKey,
         2 * anchor.web3.LAMPORTS_PER_SOL
@@ -67,6 +75,43 @@ describe("fxckwhales-hook-real", () => {
 
     [extraAccountMetaListPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("extra-account-metas"), mint.toBuffer()],
+      program.programId
+    );
+
+    senderTokenAccount = getAssociatedTokenAddressSync(
+      mint,
+      senderOwner.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    regularTokenAccount = getAssociatedTokenAddressSync(
+      mint,
+      regularOwner.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    reserveTokenAccount = getAssociatedTokenAddressSync(
+      mint,
+      reserveOwner.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    whitelistedTokenAccount = getAssociatedTokenAddressSync(
+      mint,
+      whitelistedOwner.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    [whitelistPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("whitelist"),
+        configPda.toBuffer(),
+        whitelistedTokenAccount.toBuffer(),
+      ],
       program.programId
     );
 
@@ -95,27 +140,6 @@ describe("fxckwhales-hook-real", () => {
 
     await provider.sendAndConfirm(createMintTx, [mintKeypair]);
 
-    senderTokenAccount = getAssociatedTokenAddressSync(
-      mint,
-      senderOwner.publicKey,
-      false,
-      TOKEN_2022_PROGRAM_ID
-    );
-
-    regularTokenAccount = getAssociatedTokenAddressSync(
-      mint,
-      regularOwner.publicKey,
-      false,
-      TOKEN_2022_PROGRAM_ID
-    );
-
-    reserveTokenAccount = getAssociatedTokenAddressSync(
-      mint,
-      reserveOwner.publicKey,
-      false,
-      TOKEN_2022_PROGRAM_ID
-    );
-
     const createAtasTx = new Transaction().add(
       createAssociatedTokenAccountInstruction(
         authority.publicKey,
@@ -135,6 +159,13 @@ describe("fxckwhales-hook-real", () => {
         authority.publicKey,
         reserveTokenAccount,
         reserveOwner.publicKey,
+        mint,
+        TOKEN_2022_PROGRAM_ID
+      ),
+      createAssociatedTokenAccountInstruction(
+        authority.publicKey,
+        whitelistedTokenAccount,
+        whitelistedOwner.publicKey,
         mint,
         TOKEN_2022_PROGRAM_ID
       )
@@ -167,7 +198,6 @@ describe("fxckwhales-hook-real", () => {
       TOKEN_2022_PROGRAM_ID
     );
 
-    // regular empieza en 0
     await program.methods
       .initializeConfig(100)
       .accounts({
@@ -186,6 +216,18 @@ describe("fxckwhales-hook-real", () => {
         extraAccountMetaList: extraAccountMetaListPda,
         mint,
         config: configPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([])
+      .rpc();
+
+    await program.methods
+      .addWhitelist({ liquidityPool: {} })
+      .accounts({
+        config: configPda,
+        wallet: whitelistedTokenAccount,
+        entry: whitelistPda,
+        authority: authority.publicKey,
         systemProgram: SystemProgram.programId,
       })
       .signers([])
@@ -222,12 +264,12 @@ describe("fxckwhales-hook-real", () => {
     console.log("Reserve initial amount:", reserveInfo.amount.toString());
   });
 
-  async function buildTransferIx(amount: bigint) {
+  async function buildTransferIx(destination: PublicKey, amount: bigint) {
     return await createTransferCheckedWithTransferHookInstruction(
       provider.connection,
       senderTokenAccount,
       mint,
-      regularTokenAccount,
+      destination,
       senderOwner.publicKey,
       amount,
       0,
@@ -271,7 +313,7 @@ describe("fxckwhales-hook-real", () => {
     const before = await getTokenAmount(regularTokenAccount);
     console.log("Regular before test1:", before.toString());
 
-    const ix = await buildTransferIx(50n);
+    const ix = await buildTransferIx(regularTokenAccount, 50n);
     const tx = new Transaction().add(ix);
     await provider.sendAndConfirm(tx, [senderOwner]);
 
@@ -288,7 +330,7 @@ describe("fxckwhales-hook-real", () => {
     console.log("Regular before test2:", before.toString());
 
     try {
-      const ix = await buildTransferIx(60n);
+      const ix = await buildTransferIx(regularTokenAccount, 60n);
       const tx = new Transaction().add(ix);
       await provider.sendAndConfirm(tx, [senderOwner]);
 
@@ -318,6 +360,24 @@ describe("fxckwhales-hook-real", () => {
     if (after !== 50n) {
       throw new Error(
         `Expected regular balance to remain 50 after blocked transfer, got ${after.toString()}`
+      );
+    }
+  });
+
+  it("real transfer allows whitelisted destination", async () => {
+    const before = await getTokenAmount(whitelistedTokenAccount);
+    console.log("Whitelisted before test3:", before.toString());
+
+    const ix = await buildTransferIx(whitelistedTokenAccount, 500n);
+    const tx = new Transaction().add(ix);
+    await provider.sendAndConfirm(tx, [senderOwner]);
+
+    const after = await waitForTokenAmount(whitelistedTokenAccount, 500n);
+    console.log("Whitelisted after test3:", after.toString());
+
+    if (after !== 500n) {
+      throw new Error(
+        `Expected whitelisted balance 500, got ${after.toString()}`
       );
     }
   });

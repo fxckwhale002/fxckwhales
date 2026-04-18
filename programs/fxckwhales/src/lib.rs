@@ -12,6 +12,7 @@ use anchor_lang::system_program::{create_account, CreateAccount};
 
 use spl_tlv_account_resolution::{
     account::ExtraAccountMeta,
+    seeds::Seed,
     state::ExtraAccountMetaList,
 };
 use spl_transfer_hook_interface::instruction::ExecuteInstruction;
@@ -43,8 +44,31 @@ pub mod fxckwhales {
         ctx: Context<InitializeExtraAccountMetaList>,
     ) -> Result<()> {
         let account_metas = vec![
+            // config PDA fija
             ExtraAccountMeta::new_with_pubkey(&ctx.accounts.config.key(), false, false)
                 .map_err(|_| error!(FxckError::InvalidExtraAccountMetaList))?,
+            // whitelist PDA dinámica derivada con:
+            // [WhitelistEntry::SEED, config_pubkey, destination_token_pubkey]
+            //
+            // En execute:
+            // 0 = source_token
+            // 1 = mint
+            // 2 = destination_token
+            // 3 = owner
+            // 4 = extra_account_meta_list
+            // 5 = config (primer extra meta)
+            ExtraAccountMeta::new_with_seeds(
+                &[
+                    Seed::Literal {
+                        bytes: WhitelistEntry::SEED.to_vec(),
+                    },
+                    Seed::AccountKey { index: 5 }, // config PDA
+                    Seed::AccountKey { index: 2 }, // destination token account
+                ],
+                false,
+                false,
+            )
+            .map_err(|_| error!(FxckError::InvalidExtraAccountMetaList))?,
         ];
 
         let account_size = ExtraAccountMetaList::size_of(account_metas.len())
@@ -134,7 +158,7 @@ pub mod fxckwhales {
             &ctx.accounts.mint.to_account_info(),
             &ctx.accounts.destination_token.to_account_info(),
             &ctx.accounts.config,
-            None,
+            ctx.accounts.whitelist_entry.as_ref().map(|a| a.as_ref()),
             amount,
         )
     }
@@ -350,6 +374,9 @@ pub struct TransferHook<'info> {
         bump = config.bump
     )]
     pub config: Account<'info, Config>,
+
+    /// CHECK: PDA dinámica de whitelist del token account destino
+    pub whitelist_entry: Option<UncheckedAccount<'info>>,
 }
 
 #[error_code]

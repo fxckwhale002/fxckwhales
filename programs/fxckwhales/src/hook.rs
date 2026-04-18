@@ -77,7 +77,12 @@ pub fn validate_transfer<'info>(
     let destination = destination_state.base;
     drop(destination_data);
 
-    if is_whitelisted(program_id, config.key(), &destination, whitelist_ai)? {
+    if is_whitelisted(
+        program_id,
+        config.key(),
+        destination_token_ai.key(),
+        whitelist_ai,
+    )? {
         return Ok(());
     }
 
@@ -126,7 +131,12 @@ pub fn validate_transfer_raw<'info>(
         .map_err(|_| error!(FxckError::InvalidConfigAccount))?;
     drop(config_data);
 
-    if is_whitelisted(program_id, config_ai.key(), &destination, whitelist_ai)? {
+    if is_whitelisted(
+        program_id,
+        config_ai.key(),
+        destination_token_ai.key(),
+        whitelist_ai,
+    )? {
         return Ok(());
     }
 
@@ -152,7 +162,7 @@ pub fn validate_transfer_raw<'info>(
 fn is_whitelisted<'info>(
     program_id: &Pubkey,
     config_key: Pubkey,
-    destination: &TokenAccount,
+    destination_token_key: Pubkey,
     whitelist_ai: Option<&AccountInfo<'info>>,
 ) -> Result<bool> {
     let Some(ai) = whitelist_ai else {
@@ -174,5 +184,5 @@ fn is_whitelisted<'info>(
         Err(_) => return Ok(false),
     };
 
-    Ok(entry.config == config_key && entry.wallet == destination.owner)
+    Ok(entry.config == config_key && entry.wallet == destination_token_key)
 }

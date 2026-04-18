@@ -1,17 +1,20 @@
 pub mod hook;
 pub mod state;
 
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, Discriminator};
+use anchor_lang::solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    program_error::ProgramError,
+    pubkey::Pubkey,
+};
 use anchor_lang::system_program::{create_account, CreateAccount};
 
 use spl_tlv_account_resolution::{
     account::ExtraAccountMeta,
     state::ExtraAccountMetaList,
 };
-use spl_transfer_hook_interface::instruction::{
-    ExecuteInstruction,
-    TransferHookInstruction,
-};
+use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 
 use crate::state::{Config, WhitelistEntry, WhitelistKind};
 
@@ -137,21 +140,65 @@ pub mod fxckwhales {
     }
 }
 
-pub fn fallback<'info>(
+anchor_lang::solana_program::entrypoint!(process_instruction);
+
+pub fn process_instruction<'info>(
     program_id: &Pubkey,
     accounts: &'info [AccountInfo<'info>],
     data: &[u8],
-) -> Result<()> {
-    let instruction = TransferHookInstruction::unpack(data)
-        .map_err(|_| error!(FxckError::InvalidTransferHookInstruction))?;
-
-    match instruction {
-        TransferHookInstruction::Execute { amount } => {
-            let amount_bytes = amount.to_le_bytes();
-            __private::__global::transfer_hook(program_id, accounts, &amount_bytes)
-        }
-        _ => Err(error!(FxckError::InvalidTransferHookInstruction)),
+) -> ProgramResult {
+    if let Some(res) = hook::try_process_transfer_hook(program_id, accounts, data) {
+        return res;
     }
+
+    if data.len() < 8 {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    let disc: [u8; 8] = data[..8]
+        .try_into()
+        .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+    if disc == instruction::InitializeConfig::DISCRIMINATOR {
+        return __private::__global::initialize_config(program_id, accounts, &data[8..])
+            .map_err(Into::into);
+    }
+
+    if disc == instruction::InitializeExtraAccountMetaList::DISCRIMINATOR {
+        return __private::__global::initialize_extra_account_meta_list(
+            program_id,
+            accounts,
+            &data[8..],
+        )
+        .map_err(Into::into);
+    }
+
+    if disc == instruction::AddWhitelist::DISCRIMINATOR {
+        return __private::__global::add_whitelist(program_id, accounts, &data[8..])
+            .map_err(Into::into);
+    }
+
+    if disc == instruction::RemoveWhitelist::DISCRIMINATOR {
+        return __private::__global::remove_whitelist(program_id, accounts, &data[8..])
+            .map_err(Into::into);
+    }
+
+    if disc == instruction::FinalizeConfig::DISCRIMINATOR {
+        return __private::__global::finalize_config(program_id, accounts, &data[8..])
+            .map_err(Into::into);
+    }
+
+    if disc == instruction::DebugValidateTransfer::DISCRIMINATOR {
+        return __private::__global::debug_validate_transfer(program_id, accounts, &data[8..])
+            .map_err(Into::into);
+    }
+
+    if disc == instruction::TransferHook::DISCRIMINATOR {
+        return __private::__global::transfer_hook(program_id, accounts, &data[8..])
+            .map_err(Into::into);
+    }
+
+    Err(ProgramError::InvalidInstructionData)
 }
 
 #[derive(Accounts)]

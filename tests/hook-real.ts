@@ -1,6 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program, Idl } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
   ExtensionType,
@@ -10,8 +15,9 @@ import {
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddressSync,
   mintTo,
+  getAccount,
+  createTransferCheckedWithTransferHookInstruction,
 } from "@solana/spl-token";
-import { createTransferCheckedWithTransferHookInstruction } from "@solana/spl-token";
 
 const idl = require("../target/idl/fxckwhales.json");
 
@@ -136,6 +142,7 @@ describe("fxckwhales-hook-real", () => {
 
     await provider.sendAndConfirm(createAtasTx, []);
 
+    // supply total = 10000
     await mintTo(
       provider.connection,
       authority,
@@ -154,24 +161,13 @@ describe("fxckwhales-hook-real", () => {
       mint,
       reserveTokenAccount,
       authority,
-      8960,
+      9000,
       [],
       undefined,
       TOKEN_2022_PROGRAM_ID
     );
 
-    await mintTo(
-      provider.connection,
-      authority,
-      mint,
-      regularTokenAccount,
-      authority,
-      40,
-      [],
-      undefined,
-      TOKEN_2022_PROGRAM_ID
-    );
-
+    // regular empieza en 0
     await program.methods
       .initializeConfig(100)
       .accounts({
@@ -201,6 +197,29 @@ describe("fxckwhales-hook-real", () => {
     console.log("ExtraAccountMetaList PDA:", extraAccountMetaListPda.toBase58());
     console.log("Sender token account:", senderTokenAccount.toBase58());
     console.log("Regular token account:", regularTokenAccount.toBase58());
+
+    const senderInfo = await getAccount(
+      provider.connection,
+      senderTokenAccount,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    const regularInfo = await getAccount(
+      provider.connection,
+      regularTokenAccount,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    const reserveInfo = await getAccount(
+      provider.connection,
+      reserveTokenAccount,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    console.log("Sender initial amount:", senderInfo.amount.toString());
+    console.log("Regular initial amount:", regularInfo.amount.toString());
+    console.log("Reserve initial amount:", reserveInfo.amount.toString());
   });
 
   async function buildTransferIx(amount: bigint) {
@@ -218,15 +237,58 @@ describe("fxckwhales-hook-real", () => {
     );
   }
 
+  async function getTokenAmount(account: PublicKey): Promise<bigint> {
+    const info = await getAccount(
+      provider.connection,
+      account,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    return info.amount;
+  }
+
+  async function waitForTokenAmount(
+    account: PublicKey,
+    expected: bigint,
+    attempts = 20,
+    delayMs = 250
+  ): Promise<bigint> {
+    let last = -1n;
+
+    for (let i = 0; i < attempts; i++) {
+      last = await getTokenAmount(account);
+      if (last === expected) {
+        return last;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    return last;
+  }
+
   it("real transfer allows destination below 1 percent", async () => {
-    const ix = await buildTransferIx(5n);
+    const before = await getTokenAmount(regularTokenAccount);
+    console.log("Regular before test1:", before.toString());
+
+    const ix = await buildTransferIx(50n);
     const tx = new Transaction().add(ix);
     await provider.sendAndConfirm(tx, [senderOwner]);
+
+    const after = await waitForTokenAmount(regularTokenAccount, 50n);
+    console.log("Regular after test1:", after.toString());
+
+    if (after !== 50n) {
+      throw new Error(`Expected regular balance 50, got ${after.toString()}`);
+    }
   });
 
   it("real transfer blocks destination above 1 percent", async () => {
+    const before = await getTokenAmount(regularTokenAccount);
+    console.log("Regular before test2:", before.toString());
+
     try {
-      const ix = await buildTransferIx(70n);
+      const ix = await buildTransferIx(60n);
       const tx = new Transaction().add(ix);
       await provider.sendAndConfirm(tx, [senderOwner]);
 
@@ -243,10 +305,20 @@ describe("fxckwhales-hook-real", () => {
 
       if (
         !msg.includes("MaxHoldExceeded") &&
-        !msg.includes("Destination holding exceeds")
+        !msg.includes("Destination holding exceeds") &&
+        !msg.includes("0x1773")
       ) {
         throw e;
       }
+    }
+
+    const after = await getTokenAmount(regularTokenAccount);
+    console.log("Regular after test2:", after.toString());
+
+    if (after !== 50n) {
+      throw new Error(
+        `Expected regular balance to remain 50 after blocked transfer, got ${after.toString()}`
+      );
     }
   });
 });

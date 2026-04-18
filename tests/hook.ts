@@ -1,10 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program, Idl } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import { expect } from "chai";
 import {
   TOKEN_2022_PROGRAM_ID,
   createMint,
-  getOrCreateAssociatedTokenAccount,
+  createAccount,
   mintTo,
   getAccount,
 } from "@solana/spl-token";
@@ -22,20 +23,21 @@ describe("fxckwhales-hook", () => {
   const program = new Program(idl as Idl, programId, provider);
 
   const authority = (provider.wallet as anchor.Wallet).payer;
-  const whitelistedOwner = Keypair.generate();
+
   const regularOwner = Keypair.generate();
+  const whitelistedOwner = Keypair.generate();
   const reserveOwner = Keypair.generate();
 
   let mint: PublicKey;
   let configPda: PublicKey;
   let whitelistPda: PublicKey;
 
-  let whitelistedTokenAccount: PublicKey;
   let regularTokenAccount: PublicKey;
+  let whitelistedTokenAccount: PublicKey;
   let reserveTokenAccount: PublicKey;
 
   before(async () => {
-    for (const kp of [whitelistedOwner, regularOwner, reserveOwner]) {
+    for (const kp of [regularOwner, whitelistedOwner, reserveOwner]) {
       const sig = await provider.connection.requestAirdrop(
         kp.publicKey,
         2 * anchor.web3.LAMPORTS_PER_SOL
@@ -59,59 +61,32 @@ describe("fxckwhales-hook", () => {
       program.programId
     );
 
-    [whitelistPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("whitelist"),
-        configPda.toBuffer(),
-        whitelistedOwner.publicKey.toBuffer(),
-      ],
-      program.programId
-    );
-
-    const whitelistedAta = await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      authority,
-      mint,
-      whitelistedOwner.publicKey,
-      undefined,
-      undefined,
-      undefined,
-      TOKEN_2022_PROGRAM_ID
-    );
-    whitelistedTokenAccount = whitelistedAta.address;
-
-    const regularAta = await getOrCreateAssociatedTokenAccount(
+    regularTokenAccount = await createAccount(
       provider.connection,
       authority,
       mint,
       regularOwner.publicKey,
       undefined,
       undefined,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    whitelistedTokenAccount = await createAccount(
+      provider.connection,
+      authority,
+      mint,
+      whitelistedOwner.publicKey,
+      undefined,
       undefined,
       TOKEN_2022_PROGRAM_ID
     );
-    regularTokenAccount = regularAta.address;
 
-    const reserveAta = await getOrCreateAssociatedTokenAccount(
+    reserveTokenAccount = await createAccount(
       provider.connection,
       authority,
       mint,
       reserveOwner.publicKey,
       undefined,
-      undefined,
-      undefined,
-      TOKEN_2022_PROGRAM_ID
-    );
-    reserveTokenAccount = reserveAta.address;
-
-    await mintTo(
-      provider.connection,
-      authority,
-      mint,
-      reserveTokenAccount,
-      authority,
-      9960,
-      [],
       undefined,
       TOKEN_2022_PROGRAM_ID
     );
@@ -128,15 +103,46 @@ describe("fxckwhales-hook", () => {
       TOKEN_2022_PROGRAM_ID
     );
 
+    await mintTo(
+      provider.connection,
+      authority,
+      mint,
+      reserveTokenAccount,
+      authority,
+      9960,
+      [],
+      undefined,
+      TOKEN_2022_PROGRAM_ID
+    );
+
     await program.methods
-      .initializeConfig(100) // 1%
+      .initializeConfig(100)
       .accounts({
-        authority: authority.publicKey,
-        mint,
         config: configPda,
+        mint,
+        authority: authority.publicKey,
         systemProgram: SystemProgram.programId,
       })
-      .signers([])
+      .rpc();
+
+    [whitelistPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("whitelist"),
+        configPda.toBuffer(),
+        whitelistedOwner.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+
+    await program.methods
+      .addWhitelist({ liquidityPool: {} })
+      .accounts({
+        config: configPda,
+        wallet: whitelistedOwner.publicKey,
+        entry: whitelistPda,
+        authority: authority.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
       .rpc();
 
     const regularAccount = await getAccount(
@@ -160,75 +166,58 @@ describe("fxckwhales-hook", () => {
     console.log("Whitelisted token account:", whitelistedTokenAccount.toBase58());
     console.log("Regular token account:", regularTokenAccount.toBase58());
     console.log("Reserve token account:", reserveTokenAccount.toBase58());
-    console.log("Regular token owner:", regularAccount.owner.toBase58());
+    console.log("Regular token owner:", regularOwner.publicKey.toBase58());
     console.log("Regular token amount:", regularAccount.amount.toString());
     console.log("Reserve token amount:", reserveAccount.amount.toString());
   });
 
   it("debug_validate_transfer allows transfer below max_hold", async () => {
     await program.methods
-      .debugValidateTransfer(new anchor.BN(5))
+      .debugValidateTransfer(new anchor.BN(50))
       .accounts({
         mint,
         destinationToken: regularTokenAccount,
         config: configPda,
         whitelistEntry: null,
       })
-      .signers([])
       .rpc();
-
-    const dst = await getAccount(
-      provider.connection,
-      regularTokenAccount,
-      "confirmed",
-      TOKEN_2022_PROGRAM_ID
-    );
-
-    if (Number(dst.amount) !== 40) {
-      throw new Error(`Unexpected destination amount: ${dst.amount}`);
-    }
   });
 
   it("debug_validate_transfer blocks transfer above max_hold", async () => {
     try {
       await program.methods
-        .debugValidateTransfer(new anchor.BN(70))
+        .debugValidateTransfer(new anchor.BN(61))
         .accounts({
           mint,
           destinationToken: regularTokenAccount,
           config: configPda,
           whitelistEntry: null,
         })
-        .signers([])
         .rpc();
 
       throw new Error("Expected MaxHoldExceeded");
     } catch (e: any) {
-      const code = anchorErrorCode(e);
-      const msg = anchorErrorMsg(e);
+      const msg = (
+        e?.error?.errorMessage ||
+        e?.error?.message ||
+        e?.message ||
+        ""
+      ).toString();
 
-      console.log("caught code:", code);
+      console.log("caught code:", e?.error?.errorCode?.code || "");
       console.log("caught msg:", msg);
 
-      if (code !== "MaxHoldExceeded" && !msg.includes("MaxHoldExceeded")) {
+      if (
+        !msg.includes("Destination holding exceeds") &&
+        !msg.includes("MaxHoldExceeded") &&
+        !msg.includes("0x1773")
+      ) {
         throw e;
       }
     }
   });
 
   it("debug_validate_transfer allows whitelisted destination", async () => {
-    await program.methods
-      .addWhitelist({ liquidityPool: {} })
-      .accounts({
-        authority: authority.publicKey,
-        config: configPda,
-        wallet: whitelistedOwner.publicKey,
-        entry: whitelistPda,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([])
-      .rpc();
-
     await program.methods
       .debugValidateTransfer(new anchor.BN(500))
       .accounts({
@@ -237,24 +226,6 @@ describe("fxckwhales-hook", () => {
         config: configPda,
         whitelistEntry: whitelistPda,
       })
-      .signers([])
       .rpc();
   });
 });
-
-function anchorErrorCode(e: any): string {
-  return (
-    e?.error?.errorCode?.code ||
-    e?.errorCode?.code ||
-    ""
-  ).toString();
-}
-
-function anchorErrorMsg(e: any): string {
-  return (
-    e?.error?.errorMessage ||
-    e?.error?.message ||
-    e?.message ||
-    ""
-  ).toString();
-}

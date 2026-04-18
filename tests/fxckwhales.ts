@@ -1,10 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program, AnchorError, Idl } from "@coral-xyz/anchor";
+import { Program, Idl } from "@coral-xyz/anchor";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
-import {
-  TOKEN_2022_PROGRAM_ID,
-  createMint,
-} from "@solana/spl-token";
+import { expect } from "chai";
 
 const idl = require("../target/idl/fxckwhales.json");
 
@@ -20,83 +17,47 @@ describe("fxckwhales", () => {
 
   const authority = (provider.wallet as anchor.Wallet).payer;
   const outsider = Keypair.generate();
-  const walletToWhitelist = Keypair.generate();
 
-  let mint: PublicKey;
+  let mint: Keypair;
   let configPda: PublicKey;
-  let whitelistPda: PublicKey;
 
   before(async () => {
-    for (const kp of [outsider, walletToWhitelist]) {
-      const sig = await provider.connection.requestAirdrop(
-        kp.publicKey,
-        2 * anchor.web3.LAMPORTS_PER_SOL
-      );
-      await provider.connection.confirmTransaction(sig, "confirmed");
-    }
-
-    mint = await createMint(
-      provider.connection,
-      authority,
-      authority.publicKey,
-      null,
-      9,
-      undefined,
-      undefined,
-      TOKEN_2022_PROGRAM_ID
+    const sig = await provider.connection.requestAirdrop(
+      outsider.publicKey,
+      2 * anchor.web3.LAMPORTS_PER_SOL
     );
+    await provider.connection.confirmTransaction(sig, "confirmed");
+
+    mint = Keypair.generate();
 
     [configPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("config"), mint.toBuffer()],
+      [Buffer.from("config"), mint.publicKey.toBuffer()],
       program.programId
     );
-
-    [whitelistPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("whitelist"),
-        configPda.toBuffer(),
-        walletToWhitelist.publicKey.toBuffer(),
-      ],
-      program.programId
-    );
-
-    console.log("ProgramId:", program.programId.toBase58());
-    console.log("Mint:", mint.toBase58());
-    console.log("Config PDA:", configPda.toBase58());
   });
 
   it("initialize_config", async () => {
     await program.methods
       .initializeConfig(100)
       .accounts({
-        authority: authority.publicKey,
-        mint,
         config: configPda,
+        mint: mint.publicKey,
+        authority: authority.publicKey,
         systemProgram: SystemProgram.programId,
       })
-      .signers([])
       .rpc();
 
     const cfg = await program.account.config.fetch(configPda);
-    expectPk(cfg.mint, mint);
-    expectNum(cfg.maxHoldBps, 100);
-    expectAuthoritySome(cfg.authority, authority.publicKey);
+
+    expect(cfg.maxHoldBps).to.eq(100);
+    expect(cfg.mint.toBase58()).to.eq(mint.publicKey.toBase58());
+    expect(cfg.authority?.toBase58()).to.eq(authority.publicKey.toBase58());
   });
 
   it("fails with invalid bps (0)", async () => {
-    const badMint = await createMint(
-      provider.connection,
-      authority,
-      authority.publicKey,
-      null,
-      9,
-      undefined,
-      undefined,
-      TOKEN_2022_PROGRAM_ID
-    );
-
+    const badMint = Keypair.generate();
     const [badConfigPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("config"), badMint.toBuffer()],
+      [Buffer.from("config"), badMint.publicKey.toBuffer()],
       program.programId
     );
 
@@ -104,50 +65,71 @@ describe("fxckwhales", () => {
       await program.methods
         .initializeConfig(0)
         .accounts({
-          authority: authority.publicKey,
-          mint: badMint,
           config: badConfigPda,
+          mint: badMint.publicKey,
+          authority: authority.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       throw new Error("Expected InvalidBps");
     } catch (e: any) {
-      const code = anchorErrorCode(e);
-      const msg = anchorErrorMsg(e);
-      console.log("caught error code:", code);
+      const msg = (
+        e?.error?.errorMessage ||
+        e?.error?.message ||
+        e?.message ||
+        ""
+      ).toString();
+
       console.log("caught error msg:", msg);
 
-      if (code !== "InvalidBps" && !msg.includes("InvalidBps")) {
+      if (
+        !msg.includes("Invalid basis points value") &&
+        !msg.includes("0x1770") &&
+        !msg.includes("InvalidBps")
+      ) {
         throw e;
       }
     }
   });
 
   it("add_whitelist (LiquidityPool)", async () => {
-    await program.methods
-      .addWhitelist({ liquidityPool: {} })
-      .accounts({
-        authority: authority.publicKey,
-        config: configPda,
-        wallet: walletToWhitelist.publicKey,
-        entry: whitelistPda,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([])
-      .rpc();
+    const wallet = Keypair.generate();
 
-    const entry = await program.account.whitelistEntry.fetch(whitelistPda);
-    expectPk(entry.config, configPda);
-    expectPk(entry.wallet, walletToWhitelist.publicKey);
-  });
-
-  it("add_whitelist fails if not authority (Unauthorized)", async () => {
-    const [outsiderEntryPda] = PublicKey.findProgramAddressSync(
+    const [entryPda] = PublicKey.findProgramAddressSync(
       [
         Buffer.from("whitelist"),
         configPda.toBuffer(),
-        outsider.publicKey.toBuffer(),
+        wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+
+    await program.methods
+      .addWhitelist({ liquidityPool: {} })
+      .accounts({
+        config: configPda,
+        wallet: wallet.publicKey,
+        entry: entryPda,
+        authority: authority.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    const entry = await program.account.whitelistEntry.fetch(entryPda);
+
+    expect(entry.config.toBase58()).to.eq(configPda.toBase58());
+    expect(entry.wallet.toBase58()).to.eq(wallet.publicKey.toBase58());
+  });
+
+  it("add_whitelist fails if not authority (Unauthorized)", async () => {
+    const wallet = Keypair.generate();
+
+    const [entryPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("whitelist"),
+        configPda.toBuffer(),
+        wallet.publicKey.toBuffer(),
       ],
       program.programId
     );
@@ -156,10 +138,10 @@ describe("fxckwhales", () => {
       await program.methods
         .addWhitelist({ liquidityPool: {} })
         .accounts({
-          authority: outsider.publicKey,
           config: configPda,
-          wallet: outsider.publicKey,
-          entry: outsiderEntryPda,
+          wallet: wallet.publicKey,
+          entry: entryPda,
+          authority: outsider.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .signers([outsider])
@@ -167,57 +149,94 @@ describe("fxckwhales", () => {
 
       throw new Error("Expected Unauthorized");
     } catch (e: any) {
-      const code = anchorErrorCode(e);
-      const msg = anchorErrorMsg(e);
-      console.log("caught code:", code);
+      const msg = (
+        e?.error?.errorMessage ||
+        e?.error?.message ||
+        e?.message ||
+        ""
+      ).toString();
+
       console.log("caught msg:", msg);
 
-      if (code !== "Unauthorized" && !msg.includes("Unauthorized")) {
+      if (
+        !msg.includes("Unauthorized") &&
+        !msg.includes("0x1771")
+      ) {
         throw e;
       }
     }
   });
 
   it("remove_whitelist", async () => {
-    await program.methods
-      .removeWhitelist()
-      .accounts({
-        authority: authority.publicKey,
-        config: configPda,
-        wallet: walletToWhitelist.publicKey,
-        entry: whitelistPda,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([])
-      .rpc();
+    const wallet = Keypair.generate();
 
-    const entryInfo = await provider.connection.getAccountInfo(whitelistPda);
-    if (entryInfo !== null) {
-      throw new Error("Whitelist entry still exists after remove_whitelist");
-    }
-  });
-
-  it("finalize_config freezes and blocks add_whitelist (ConfigFrozen)", async () => {
-    await program.methods
-      .finalizeConfig()
-      .accounts({
-        authority: authority.publicKey,
-        config: configPda,
-      })
-      .signers([])
-      .rpc();
-
-    const cfg = await program.account.config.fetch(configPda);
-
-    if (!isAuthorityNone(cfg.authority)) {
-      throw new Error("Config authority should be None after finalizeConfig");
-    }
-
-    const [newEntryPda] = PublicKey.findProgramAddressSync(
+    const [entryPda] = PublicKey.findProgramAddressSync(
       [
         Buffer.from("whitelist"),
         configPda.toBuffer(),
-        outsider.publicKey.toBuffer(),
+        wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+
+    await program.methods
+      .addWhitelist({ liquidityPool: {} })
+      .accounts({
+        config: configPda,
+        wallet: wallet.publicKey,
+        entry: entryPda,
+        authority: authority.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    await program.methods
+      .removeWhitelist()
+      .accounts({
+        config: configPda,
+        wallet: wallet.publicKey,
+        entry: entryPda,
+        authority: authority.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    const info = await provider.connection.getAccountInfo(entryPda);
+    expect(info).to.eq(null);
+  });
+
+  it("finalize_config freezes and blocks add_whitelist (ConfigFrozen)", async () => {
+    const frozenMint = Keypair.generate();
+
+    const [frozenConfigPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("config"), frozenMint.publicKey.toBuffer()],
+      program.programId
+    );
+
+    await program.methods
+      .initializeConfig(100)
+      .accounts({
+        config: frozenConfigPda,
+        mint: frozenMint.publicKey,
+        authority: authority.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    await program.methods
+      .finalizeConfig()
+      .accounts({
+        config: frozenConfigPda,
+        authority: authority.publicKey,
+      })
+      .rpc();
+
+    const wallet = Keypair.generate();
+    const [entryPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("whitelist"),
+        frozenConfigPda.toBuffer(),
+        wallet.publicKey.toBuffer(),
       ],
       program.programId
     );
@@ -226,91 +245,32 @@ describe("fxckwhales", () => {
       await program.methods
         .addWhitelist({ liquidityPool: {} })
         .accounts({
+          config: frozenConfigPda,
+          wallet: wallet.publicKey,
+          entry: entryPda,
           authority: authority.publicKey,
-          config: configPda,
-          wallet: outsider.publicKey,
-          entry: newEntryPda,
           systemProgram: SystemProgram.programId,
         })
-        .signers([])
         .rpc();
 
       throw new Error("Expected ConfigFrozen");
     } catch (e: any) {
-      const code = anchorErrorCode(e);
-      const msg = anchorErrorMsg(e);
-      console.log("caught code:", code);
+      const msg = (
+        e?.error?.errorMessage ||
+        e?.error?.message ||
+        e?.message ||
+        ""
+      ).toString();
+
       console.log("caught msg:", msg);
 
-      if (code !== "ConfigFrozen" && !msg.includes("ConfigFrozen")) {
+      if (
+        !msg.includes("Config is frozen") &&
+        !msg.includes("ConfigFrozen") &&
+        !msg.includes("0x1772")
+      ) {
         throw e;
       }
     }
   });
 });
-
-function anchorErrorCode(e: any): string {
-  return (
-    e?.error?.errorCode?.code ||
-    e?.errorCode?.code ||
-    ""
-  ).toString();
-}
-
-function anchorErrorMsg(e: any): string {
-  return (
-    e?.error?.errorMessage ||
-    e?.error?.message ||
-    e?.message ||
-    ""
-  ).toString();
-}
-
-function expectPk(a: any, b: PublicKey) {
-  const aPk = new PublicKey(a);
-  if (!aPk.equals(b)) {
-    throw new Error(`Pubkey mismatch: ${aPk.toBase58()} != ${b.toBase58()}`);
-  }
-}
-
-function expectNum(v: any, expected: number) {
-  const n = typeof v?.toNumber === "function" ? v.toNumber() : Number(v);
-  if (n !== expected) {
-    throw new Error(`Number mismatch: ${n} != ${expected}`);
-  }
-}
-
-function isAuthorityNone(authorityField: any): boolean {
-  if (authorityField == null) return true;
-  if (typeof authorityField === "object") {
-    if ("none" in authorityField) return true;
-    if ("some" in authorityField) return false;
-  }
-  return false;
-}
-
-function expectAuthoritySome(authorityField: any, expected: PublicKey) {
-  if (authorityField == null) {
-    throw new Error("authority is null/none");
-  }
-
-  let pk: PublicKey | null = null;
-
-  if (authorityField instanceof PublicKey) {
-    pk = authorityField;
-  } else if (typeof authorityField === "object" && "some" in authorityField) {
-    pk = new PublicKey(authorityField.some);
-  } else {
-    try {
-      pk = new PublicKey(authorityField);
-    } catch {
-      pk = null;
-    }
-  }
-
-  if (!pk || !pk.equals(expected)) {
-    throw new Error(
-      `Authority mismatch: got ${pk?.toBase58?.() ?? authorityField}, expected ${expected.toBase58()}`
-    );
-  }
-}

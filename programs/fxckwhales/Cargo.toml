@@ -1,7 +1,7 @@
 [package]
 name = "fxckwhales"
 version = "0.1.0"
-description = "Anti-whale transfer hook program"
+description = "Created with Anchor"
 edition = "2021"
 
 [lib]
@@ -9,23 +9,15 @@ crate-type = ["cdylib", "lib"]
 name = "fxckwhales"
 
 [features]
-default = []
 no-entrypoint = []
-cpi = ["no-entrypoint"]
-anchor-debug = []
 no-idl = []
 no-log-ix-name = []
-custom-heap = []
-custom-panic = []
+cpi = ["no-entrypoint"]
+default = ["no-entrypoint"]
 
 [dependencies]
 anchor-lang = "0.28.0"
 anchor-spl = "0.28.0"
-num_enum = "0.6.1"
-num_enum_derive = "0.6.1"
-solana-program = "1.16.0"
-spl-token-2022 = "0.6.1"
-
-spl-transfer-hook-interface = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
-spl-tlv-account-resolution  = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
-spl-type-length-value       = { git = "https://github.com/solana-labs/solana-program-library", rev = "88547d85c1cbe63feb2f79160d3070075a9e156a" }
+spl-token-2022 = { version = "0.6.1", features = ["no-entrypoint"] }
+spl-transfer-hook-interface = "0.3.0"
+spl-tlv-account-resolution = "0.4.0"

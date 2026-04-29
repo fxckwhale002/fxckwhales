@@ -14,7 +14,7 @@ fxckwhales = "9716KNRKwaXaD9CkeqVjHCnDhuhBpWE1MwaDFPLabREE"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "/home/ferna/.config/solana/id.json"
 
 [scripts]

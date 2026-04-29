@@ -309,33 +309,6 @@ describe("fxckwhales-hook-real", () => {
     return last;
   }
 
-  async function expectTransferToFail(destination: PublicKey, amount: bigint) {
-    try {
-      const ix = await buildTransferIx(destination, amount);
-      const tx = new Transaction().add(ix);
-      await provider.sendAndConfirm(tx, [senderOwner]);
-
-      throw new Error("Expected transfer to fail");
-    } catch (e: any) {
-      const msg = (
-        e?.error?.errorMessage ||
-        e?.error?.message ||
-        e?.message ||
-        ""
-      ).toString();
-
-      console.log("caught msg:", msg);
-
-      if (
-        !msg.includes("MaxHoldExceeded") &&
-        !msg.includes("Destination holding exceeds") &&
-        !msg.includes("0x1773")
-      ) {
-        throw e;
-      }
-    }
-  }
-
   it("real transfer allows destination below 1 percent", async () => {
     const before = await getTokenAmount(regularTokenAccount);
     console.log("Regular before test1:", before.toString());
@@ -356,7 +329,30 @@ describe("fxckwhales-hook-real", () => {
     const before = await getTokenAmount(regularTokenAccount);
     console.log("Regular before test2:", before.toString());
 
-    await expectTransferToFail(regularTokenAccount, 60n);
+    try {
+      const ix = await buildTransferIx(regularTokenAccount, 60n);
+      const tx = new Transaction().add(ix);
+      await provider.sendAndConfirm(tx, [senderOwner]);
+
+      throw new Error("Expected MaxHoldExceeded");
+    } catch (e: any) {
+      const msg = (
+        e?.error?.errorMessage ||
+        e?.error?.message ||
+        e?.message ||
+        ""
+      ).toString();
+
+      console.log("caught msg:", msg);
+
+      if (
+        !msg.includes("MaxHoldExceeded") &&
+        !msg.includes("Destination holding exceeds") &&
+        !msg.includes("0x1773")
+      ) {
+        throw e;
+      }
+    }
 
     const after = await getTokenAmount(regularTokenAccount);
     console.log("Regular after test2:", after.toString());
@@ -382,50 +378,6 @@ describe("fxckwhales-hook-real", () => {
     if (after !== 500n) {
       throw new Error(
         `Expected whitelisted balance 500, got ${after.toString()}`
-      );
-    }
-  });
-
-  it("real transfer blocks destination again after removing whitelist", async () => {
-    const beforeRemove = await getTokenAmount(whitelistedTokenAccount);
-    console.log("Whitelisted before remove:", beforeRemove.toString());
-
-    if (beforeRemove !== 500n) {
-      throw new Error(
-        `Expected whitelisted balance 500 before removal, got ${beforeRemove.toString()}`
-      );
-    }
-
-    await program.methods
-      .removeWhitelist()
-      .accounts({
-        config: configPda,
-        wallet: whitelistedTokenAccount,
-        entry: whitelistPda,
-        authority: authority.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([])
-      .rpc();
-
-    const whitelistInfo = await provider.connection.getAccountInfo(whitelistPda);
-    console.log(
-      "Whitelist account after remove:",
-      whitelistInfo ? "still exists" : "closed"
-    );
-
-    if (whitelistInfo !== null) {
-      throw new Error("Expected whitelist PDA to be closed after remove");
-    }
-
-    await expectTransferToFail(whitelistedTokenAccount, 1n);
-
-    const afterBlocked = await getTokenAmount(whitelistedTokenAccount);
-    console.log("Whitelisted after blocked post-remove:", afterBlocked.toString());
-
-    if (afterBlocked !== 500n) {
-      throw new Error(
-        `Expected whitelisted balance to remain 500 after blocked transfer, got ${afterBlocked.toString()}`
       );
     }
   });

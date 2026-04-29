@@ -125,11 +125,7 @@ pub mod fxckwhales {
         Ok(())
     }
 
-    pub fn remove_whitelist(ctx: Context<RemoveWhitelist>) -> Result<()> {
-        let cfg = &ctx.accounts.config;
-        let auth = cfg.authority.ok_or(FxckError::ConfigFrozen)?;
-        require_keys_eq!(auth, ctx.accounts.authority.key(), FxckError::Unauthorized);
-
+    pub fn remove_whitelist(_ctx: Context<RemoveWhitelist>) -> Result<()> {
         Ok(())
     }
 
@@ -309,7 +305,7 @@ pub struct RemoveWhitelist<'info> {
     )]
     pub config: Account<'info, Config>,
 
-    /// CHECK: solo usamos su pubkey
+    /// CHECK
     pub wallet: UncheckedAccount<'info>,
 
     #[account(

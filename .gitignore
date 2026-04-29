@@ -1,10 +1,14 @@
-.anchor
+# backups
+*.bak
+*.backup
+*.before_*
+
+# build
+target/
+node_modules/
+
+# env
+.env
+
+# misc
 .DS_Store
-target
-**/*.rs.bk
-node_modules
-test-ledger
-.yarn
-.surfpool
-Cargo.lock
-vendor/

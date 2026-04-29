@@ -1,3 +1,4 @@
+import { initConfig } from "./commands/initConfig";
 import { addWhitelist } from "./commands/addWhitelist";
 import { removeWhitelist } from "./commands/removeWhitelist";
 
@@ -6,8 +7,14 @@ function printHelp() {
 fxckwhales CLI
 
 Usage:
+  npx ts-node cli/index.ts init-config <MINT> <MAX_HOLD_BPS>
   npx ts-node cli/index.ts add-whitelist <MINT> <DESTINATION_TOKEN_ACCOUNT>
   npx ts-node cli/index.ts remove-whitelist <MINT> <DESTINATION_TOKEN_ACCOUNT>
+
+Examples:
+  npx ts-node cli/index.ts init-config Fd5sp...H2v9 100
+  npx ts-node cli/index.ts add-whitelist Fd5sp...H2v9 DJHtn...Xa98
+  npx ts-node cli/index.ts remove-whitelist Fd5sp...H2v9 DJHtn...Xa98
 
 Environment:
   ANCHOR_PROVIDER_URL   Defaults to https://api.devnet.solana.com
@@ -25,6 +32,11 @@ async function main() {
   try {
     if (!command || command === "help" || command === "--help" || command === "-h") {
       printHelp();
+      return;
+    }
+
+    if (command === "init-config") {
+      await initConfig(args);
       return;
     }
 

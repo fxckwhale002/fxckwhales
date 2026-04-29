@@ -12,3 +12,7 @@ node_modules/
 
 # misc
 .DS_Store
+
+.anchor/
+test-ledger/
+vendor/

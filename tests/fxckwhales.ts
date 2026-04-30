@@ -5,6 +5,20 @@ import { expect } from "chai";
 
 const idl = require("../target/idl/fxckwhales.json");
 
+type ConfigAccount = {
+  mint: PublicKey;
+  maxHoldBps: number;
+  authority: PublicKey | null;
+  bump: number;
+};
+
+type WhitelistEntryAccount = {
+  config: PublicKey;
+  wallet: PublicKey;
+  kind: any;
+  bump: number;
+};
+
 describe("fxckwhales", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
@@ -47,7 +61,9 @@ describe("fxckwhales", () => {
       })
       .rpc();
 
-    const cfg = await program.account.config.fetch(configPda);
+    const cfg = (await program.account.config.fetch(
+      configPda
+    )) as ConfigAccount;
 
     expect(cfg.maxHoldBps).to.eq(100);
     expect(cfg.mint.toBase58()).to.eq(mint.publicKey.toBase58());
@@ -116,7 +132,9 @@ describe("fxckwhales", () => {
       })
       .rpc();
 
-    const entry = await program.account.whitelistEntry.fetch(entryPda);
+    const entry = (await program.account.whitelistEntry.fetch(
+      entryPda
+    )) as WhitelistEntryAccount;
 
     expect(entry.config.toBase58()).to.eq(configPda.toBase58());
     expect(entry.wallet.toBase58()).to.eq(wallet.publicKey.toBase58());
@@ -158,10 +176,7 @@ describe("fxckwhales", () => {
 
       console.log("caught msg:", msg);
 
-      if (
-        !msg.includes("Unauthorized") &&
-        !msg.includes("0x1771")
-      ) {
+      if (!msg.includes("Unauthorized") && !msg.includes("0x1771")) {
         throw e;
       }
     }

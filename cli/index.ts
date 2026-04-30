@@ -1,6 +1,7 @@
 import { initConfig } from "./commands/initConfig";
 import { addWhitelist } from "./commands/addWhitelist";
 import { removeWhitelist } from "./commands/removeWhitelist";
+import { smokeDevnet } from "./commands/smokeDevnet";
 
 function printHelp() {
   console.log(`
@@ -10,11 +11,13 @@ Usage:
   npx ts-node cli/index.ts init-config <MINT> <MAX_HOLD_BPS>
   npx ts-node cli/index.ts add-whitelist <MINT> <DESTINATION_TOKEN_ACCOUNT>
   npx ts-node cli/index.ts remove-whitelist <MINT> <DESTINATION_TOKEN_ACCOUNT>
+  npx ts-node cli/index.ts smoke-devnet
 
 Examples:
   npx ts-node cli/index.ts init-config Fd5sp...H2v9 100
   npx ts-node cli/index.ts add-whitelist Fd5sp...H2v9 DJHtn...Xa98
   npx ts-node cli/index.ts remove-whitelist Fd5sp...H2v9 DJHtn...Xa98
+  npx ts-node cli/index.ts smoke-devnet
 
 Environment:
   ANCHOR_PROVIDER_URL   Defaults to https://api.devnet.solana.com
@@ -50,7 +53,14 @@ async function main() {
       return;
     }
 
-    throw new Error(`Unknown command: ${command}`);
+    if (command === "smoke-devnet") {
+      await smokeDevnet();
+      return;
+    }
+
+    console.error("❌ Unknown command:", command);
+    printHelp();
+    process.exit(1);
   } catch (err: any) {
     console.error("❌ Error:", err?.message || err);
     process.exit(1);

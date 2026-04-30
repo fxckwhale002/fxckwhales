@@ -173,11 +173,9 @@ fxckwhales aims to become a reusable primitive for:
 
 ## 🗺 Roadmap
 
-- Multisig authority
-- Wallet-based whitelist
-- Frontend dashboard
-- Mainnet deployment
-- Security audit
+👉 Full roadmap available here:
+
+ROADMAP.md
 
 ---
 

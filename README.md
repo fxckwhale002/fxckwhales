@@ -191,14 +191,3 @@ Experimental software. Not audited.
 
 Built by @fxckwhale002
 
-
----
-
-## 🎬 Terminal Demo
-
-The full devnet smoke test was recorded with asciinema.
-
-Recording file:
-
-assets/demo.cast
-

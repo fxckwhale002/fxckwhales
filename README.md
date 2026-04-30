@@ -1,145 +1,233 @@
 # fxckwhales 🐋🚫
 
-Anti-whale token enforcement system built on Solana using Token-2022 transfer hooks.
+A Solana Token-2022 transfer hook system for enforcing anti-whale token rules on-chain.
+
+fxckwhales prevents wallets from holding more than a configured percentage of a token supply, while still allowing controlled exceptions through dynamic whitelist accounts.
 
 ---
 
-## 🧠 Overview
+## Highlights
 
-fxckwhales is a smart contract system that enforces maximum token holding limits per wallet in real time.
-
-It prevents large holders ("whales") from accumulating excessive supply while allowing controlled exceptions via a whitelist system.
-
----
-
-## ⚙️ Core Features
-
-- Max holding enforcement (e.g. 1% per wallet)
-- Real-time validation on every transfer
-- Whitelist system (per token account)
-- Config freezing (immutable mode)
+- On-chain anti-whale enforcement
 - Token-2022 transfer hook integration
-- PDA-based deterministic architecture
+- Configurable max holding limit
+- Dynamic whitelist system
+- Authority-controlled admin flow
+- Remove-whitelist lifecycle support
+- Local tests passing
+- Devnet smoke test passing
+- Admin CLI included
 
 ---
 
-## 🏗️ Architecture
+## Devnet Program
+
+Program ID:
+
+    9716KNRKwaXaD9CkeqVjHCnDhuhBpWE1MwaDFPLabREE
+
+Latest successful devnet smoke test state:
+
+    Mint: BJK6d4zGimC8CmNMEcHYqVwiDESAx3crw5R7Xwq7Ba3A
+    Config PDA: 5rfpmRUd9qkT23KVcfa96XQkCdBidCddXCvzRZ2KYiN4
+    ExtraAccountMetaList PDA: tQHPhUnaYSRiAyyxYESTp3acK9tCfDePX7pNqS1ezoU
+
+---
+
+## How It Works
+
+fxckwhales uses Solana Token-2022 transfer hooks to validate every token transfer.
+
+Before a transfer is accepted, the hook checks whether the destination token account would exceed the configured max holding limit.
+
+If the destination is whitelisted, the transfer is allowed.
+
+If the destination is not whitelisted and exceeds the limit, the transfer is blocked.
+
+---
+
+## Architecture
 
 ### Config PDA
 
-Stores global rules for a token:
+Stores global configuration for one mint.
+
+Fields:
 
 - mint
 - max_hold_bps
 - authority
-- frozen state
+- bump
 
-Derived using:
+Derived with:
 
-["config", mint]
+    ["config", mint]
 
 ---
 
 ### Whitelist Entry PDA
 
-Stores allowed accounts:
+Stores an exception for a specific destination token account.
 
-- token account (NOT wallet owner)
-- whitelist type
-- linked config
+Fields:
 
-Derived using:
+- config
+- token account
+- whitelist kind
+- bump
 
-["whitelist", config, token_account]
+Derived with:
 
----
+    ["whitelist", config, token_account]
 
-## 🚀 Devnet Deployment
-
-Program ID:
-
-9716KNRKwaXaD9CkeqVjHCnDhuhBpWE1MwaDFPLabREE
+Important: the current implementation whitelists token accounts, not wallet owners.
 
 ---
 
-## 🧪 Smoke Test (Devnet)
+## Core Flow
 
-Run full real-world validation:
-
-ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
-ANCHOR_WALLET=~/.config/solana/id.json \
-npx ts-node cli/index.ts smoke-devnet
-
-This test:
-
-- Creates Token-2022 mint
-- Initializes config
-- Enforces 1% rule
-- Tests whitelist bypass
-- Removes whitelist and re-tests restriction
+1. Initialize config for a mint
+2. Initialize Token-2022 ExtraAccountMetaList
+3. Enforce max holding rule on transfer
+4. Add whitelist entry if needed
+5. Allow whitelisted destination to bypass limit
+6. Remove whitelist entry
+7. Re-apply anti-whale protection automatically
 
 ---
 
-## 🛠 CLI Usage
+## CLI
 
-npx ts-node cli/index.ts init-config <MINT> <MAX_HOLD_BPS>  
-npx ts-node cli/index.ts add-whitelist <MINT> <TOKEN_ACCOUNT>  
-npx ts-node cli/index.ts remove-whitelist <MINT> <TOKEN_ACCOUNT>  
-npx ts-node cli/index.ts smoke-devnet  
+Run help:
 
----
+    npx ts-node cli/index.ts --help
 
-## 🧪 Local Testing
+Initialize config:
 
-anchor test
+    npx ts-node cli/index.ts init-config <MINT> <MAX_HOLD_BPS>
 
-Includes:
+Add whitelist:
 
-- config initialization
-- invalid parameters
-- whitelist logic
-- authorization checks
-- freeze behavior
-- transfer validation
+    npx ts-node cli/index.ts add-whitelist <MINT> <TOKEN_ACCOUNT>
 
----
+Remove whitelist:
 
-## 🔐 Key Design Decisions
+    npx ts-node cli/index.ts remove-whitelist <MINT> <TOKEN_ACCOUNT>
 
-- PDA-based architecture → deterministic and secure
-- Token account-based whitelist → avoids ownership ambiguity
-- Transfer hooks → enforcement at protocol level
-- Config freezing → prevents post-deploy manipulation
+Run devnet smoke test:
+
+    ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
+    ANCHOR_WALLET=~/.config/solana/id.json \
+    npx ts-node cli/index.ts smoke-devnet
 
 ---
 
-## 📌 Status
+## Testing
 
-- Fully functional on devnet
-- Transfer hook enforcement working
-- CLI + automation ready
-- Test suite passing
+Run all local tests:
 
----
+    anchor test
 
-## 🧠 Vision
+Or run individual suites:
 
-fxckwhales aims to become a reusable primitive for:
+    npm run test:fxckwhales
+    npm run test:hook
+    npm run test:hook-real
+    npm run test:all
 
-- fair-launch tokens
-- anti-manipulation systems
-- DeFi governance protection
-- token distribution control
+Current status:
 
----
-
-## ⚠️ Disclaimer
-
-This is experimental software. Use at your own risk.
+- 13 local tests passing
+- Devnet smoke test passing
+- CLI verified on devnet
 
 ---
 
-## 👤 Author
+## Devnet Smoke Test
+
+The smoke test performs a full real-world validation:
+
+- creates a Token-2022 mint
+- enables the transfer hook
+- initializes config
+- initializes ExtraAccountMetaList
+- mints total supply
+- allows transfer below limit
+- blocks transfer above limit
+- adds whitelist
+- allows whitelisted transfer
+- removes whitelist
+- blocks transfer again
+
+Successful result:
+
+    DEVNET SMOKE TEST PASSED
+
+---
+
+## Security Model
+
+- Only authority can add whitelist entries
+- Only authority can remove whitelist entries
+- Config can be finalized/frozen
+- PDAs prevent arbitrary spoofed config or whitelist accounts
+- Transfer hook enforces rules during token movement
+
+---
+
+## Design Decisions
+
+### Why Token-2022 transfer hooks?
+
+Because enforcement happens at transfer time, directly on-chain.
+
+### Why PDA-based config?
+
+It guarantees one deterministic config per mint.
+
+### Why dynamic whitelist PDAs?
+
+It avoids iteration and allows constant-time lookup.
+
+### Why whitelist token accounts?
+
+Because Token-2022 transfer hooks receive token account context directly.
+
+---
+
+## Roadmap
+
+- Admin CLI improvements
+- Frontend dashboard
+- Wallet owner-based whitelist option
+- Multisig authority support
+- Mainnet-ready deployment guide
+- Security review
+- Launch documentation
+
+---
+
+## Project Status
+
+fxckwhales is currently a working devnet prototype with:
+
+- deployed Solana program
+- transfer hook enforcement
+- dynamic whitelist lifecycle
+- CLI tooling
+- smoke-tested Token-2022 flow
+
+---
+
+## Disclaimer
+
+This is experimental software and has not been audited.
+
+Use at your own risk.
+
+---
+
+## Author
 
 Built by @fxckwhale002
 

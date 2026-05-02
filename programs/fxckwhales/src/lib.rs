@@ -44,26 +44,15 @@ pub mod fxckwhales {
         ctx: Context<InitializeExtraAccountMetaList>,
     ) -> Result<()> {
         let account_metas = vec![
-            // config PDA fija
             ExtraAccountMeta::new_with_pubkey(&ctx.accounts.config.key(), false, false)
                 .map_err(|_| error!(FxckError::InvalidExtraAccountMetaList))?,
-            // whitelist PDA dinámica derivada con:
-            // [WhitelistEntry::SEED, config_pubkey, destination_token_pubkey]
-            //
-            // En execute:
-            // 0 = source_token
-            // 1 = mint
-            // 2 = destination_token
-            // 3 = owner
-            // 4 = extra_account_meta_list
-            // 5 = config (primer extra meta)
             ExtraAccountMeta::new_with_seeds(
                 &[
                     Seed::Literal {
                         bytes: WhitelistEntry::SEED.to_vec(),
                     },
-                    Seed::AccountKey { index: 5 }, // config PDA
-                    Seed::AccountKey { index: 2 }, // destination token account
+                    Seed::AccountKey { index: 5 },
+                    Seed::AccountKey { index: 2 },
                 ],
                 false,
                 false,
@@ -393,6 +382,8 @@ pub enum FxckError {
     ConfigFrozen,
     #[msg("Destination holding exceeds the configured max_hold_bps")]
     MaxHoldExceeded,
+    #[msg("Dynamic max hold tier transfer limit exceeded")]
+    DynamicHoldExceeded,
     #[msg("Math overflow")]
     MathOverflow,
     #[msg("Invalid mint account")]

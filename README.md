@@ -5,24 +5,28 @@
 ![Status](https://img.shields.io/badge/status-devnet%20ready-brightgreen)
 ![Tests](https://img.shields.io/badge/tests-passing-success)
 
-A Solana Token-2022 transfer hook system for enforcing anti-whale token rules on-chain.
+A Solana Token-2022 transfer hook system for enforcing **on-chain token distribution constraints**.
 
-fxckwhales prevents wallets from holding more than a configured percentage of a token supply while allowing controlled exceptions via dynamic whitelist accounts.
+Originally built as an anti-whale mechanism, fxckwhales evolved into a **dynamic constraint engine** that progressively limits token accumulation directly at the protocol level.
 
 ---
 
 ## 🧠 Overview
 
-fxckwhales enforces maximum token holding limits in real time on-chain using Token-2022 transfer hooks.
+fxckwhales enforces token holding rules **in real time on-chain** using Token-2022 transfer hooks.
 
-- Transfers above the allowed percentage are blocked
-- Whitelisted accounts bypass restrictions
-- Enforcement happens at protocol level
+Instead of relying on UI checks or off-chain logic, all constraints are executed inside the token transfer itself.
+
+* Hard max holding per token account
+* Dynamic accumulation limits
+* Whitelist-based exceptions
+* Fully enforced at protocol level
 
 ---
 
 ## ⚡ Quick Start
 
+```bash
 git clone https://github.com/fxckwhale002/fxckwhales.git
 cd fxckwhales
 npm install
@@ -30,6 +34,7 @@ npm install
 ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
 ANCHOR_WALLET=~/.config/solana/id.json \
 npx ts-node cli/index.ts smoke-devnet
+```
 
 ---
 
@@ -47,14 +52,16 @@ Program ID:
 
 Stores global configuration per mint:
 
-- mint
-- max_hold_bps
-- authority
-- bump
+* mint
+* max_hold_bps
+* authority
+* bump
 
 Derived using:
 
+```
 ["config", mint]
+```
 
 ---
 
@@ -62,16 +69,31 @@ Derived using:
 
 Stores exceptions for token accounts:
 
-- config
-- token account
-- whitelist kind
-- bump
+* config
+* token account
+* whitelist kind
+* bump
 
 Derived using:
 
+```
 ["whitelist", config, token_account]
+```
 
-Important: whitelist applies to token accounts, not wallet owners.
+Whitelist applies to **token accounts**, not wallet owners.
+
+---
+
+## 🧠 Dynamic Max Hold
+
+Instead of a fixed max holding limit, fxckwhales introduces **progressive accumulation constraints**:
+
+* <50% of max → no restriction
+* 50–80% → limited transfer size
+* 80–100% → highly restricted transfers
+* > 100% → blocked
+
+This creates a smoother distribution curve and makes large accumulation significantly harder over time.
 
 ---
 
@@ -80,34 +102,40 @@ Important: whitelist applies to token accounts, not wallet owners.
 1. Initialize config
 2. Initialize Token-2022 transfer hook
 3. Enforce max holding rule
-4. Add whitelist entry
-5. Allow bypass for whitelisted accounts
-6. Remove whitelist
-7. Automatically re-enable restrictions
+4. Apply dynamic accumulation constraints
+5. Add whitelist entry
+6. Allow bypass for whitelisted accounts
+7. Remove whitelist
+8. Automatically re-enable restrictions
 
 ---
 
 ## 🛠 CLI
 
+```
 npx ts-node cli/index.ts init-config <MINT> <MAX_HOLD_BPS>
 npx ts-node cli/index.ts add-whitelist <MINT> <TOKEN_ACCOUNT>
 npx ts-node cli/index.ts remove-whitelist <MINT> <TOKEN_ACCOUNT>
 npx ts-node cli/index.ts smoke-devnet
+```
 
 ---
 
 ## 🧪 Testing
 
+```
 anchor test
+```
 
 Includes:
 
-- config initialization
-- invalid parameter validation
-- whitelist logic
-- authorization checks
-- config freeze behavior
-- transfer validation
+* config initialization
+* invalid parameter validation
+* whitelist logic
+* authorization checks
+* config freeze behavior
+* transfer validation
+* dynamic constraint validation
 
 ---
 
@@ -115,48 +143,54 @@ Includes:
 
 The smoke test performs full real-world validation:
 
-- creates Token-2022 mint
-- enables transfer hook
-- initializes config
-- enforces 1% rule
-- allows valid transfers
-- blocks invalid transfers
-- adds whitelist
-- allows bypass
-- removes whitelist
-- re-enforces restriction
+* creates Token-2022 mint
+* enables transfer hook
+* initializes config
+* enforces holding limits
+* applies dynamic constraints
+* allows valid transfers
+* blocks invalid transfers
+* adds whitelist
+* allows bypass
+* removes whitelist
+* re-enforces restriction
 
 Expected result:
 
+```
 DEVNET SMOKE TEST PASSED
+```
 
 ---
 
 ## 🔐 Security Model
 
-- Only authority can modify whitelist
-- Config can be frozen
-- PDA prevents spoofing
-- Transfer hook enforces rules on-chain
+* Only authority can modify whitelist
+* Config can be frozen
+* PDA prevents spoofing
+* Transfer hook enforces rules on-chain
+* No reliance on frontend or off-chain checks
 
 ---
 
 ## ⚙️ Design Decisions
 
-- Token-2022 hooks → real enforcement (not UI-based)
-- PDA config → deterministic + secure
-- O(1) whitelist lookup → efficient
-- Token account whitelist → aligns with hook context
+* Token-2022 hooks → real enforcement (not UI-based)
+* PDA config → deterministic + secure
+* O(1) whitelist lookup → efficient
+* Token account whitelist → aligns with hook context
+* Dynamic constraints → smoother distribution vs hard caps
 
 ---
 
 ## 📌 Status
 
-- Devnet deployment active
-- Transfer hook fully working
-- CLI ready
-- Tests passing
-- Smoke test validated
+* Devnet deployment active
+* Transfer hook fully working
+* Dynamic constraints implemented
+* CLI ready
+* Tests passing
+* Smoke test validated
 
 ---
 
@@ -164,18 +198,22 @@ DEVNET SMOKE TEST PASSED
 
 fxckwhales aims to become a reusable primitive for:
 
-- fair-launch tokens
-- anti-manipulation systems
-- DeFi protections
-- controlled token distribution
+* fair-launch tokens
+* anti-manipulation systems
+* DeFi protections
+* controlled token distribution
+* on-chain token policy engines
 
 ---
 
 ## 🗺 Roadmap
 
-👉 Full roadmap available here:
-
-ROADMAP.md
+* Multisig authority
+* Wallet-based whitelist
+* Time-based transfer constraints
+* Frontend dashboard
+* Mainnet deployment
+* Security audit
 
 ---
 
@@ -188,4 +226,3 @@ Experimental software. Not audited.
 ## 👤 Author
 
 Built by @fxckwhale002
-

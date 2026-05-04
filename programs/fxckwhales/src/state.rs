@@ -49,3 +49,37 @@ impl WhitelistEntry {
         1  + // kind
         1;   // bump
 }
+
+/// ReceiverState tracks receiver-side accumulation timing.
+///
+/// It is designed for future time-based constraints such as:
+/// - cooldown between receives
+/// - anti-sniper launch windows
+/// - velocity-based accumulation limits
+///
+/// PDA:
+/// ["receiver-state", config, destination_token_account]
+#[account]
+pub struct ReceiverState {
+    /// Config this receiver state belongs to.
+    pub config: Pubkey,
+
+    /// Destination token account being tracked.
+    pub token_account: Pubkey,
+
+    /// Last receive timestamp observed for this token account.
+    pub last_receive_ts: i64,
+
+    /// bump PDA
+    pub bump: u8,
+}
+
+impl ReceiverState {
+    pub const SEED: &'static [u8] = b"receiver-state";
+
+    pub const LEN: usize =
+        32 + // config
+        32 + // token_account
+        8  + // last_receive_ts
+        1;   // bump
+}
